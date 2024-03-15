@@ -10,7 +10,6 @@
 //! - `arbitrary`: Enables implementations of [`arbitrary::Arbitrary`](https://docs.rs/arbitrary/latest/arbitrary/) for some structs. Not enabled by default.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![deny(warnings)]
 #![forbid(unsafe_code)]
 #![cfg_attr(any(target_arch = "wasm32", not(feature = "std")), no_std)]
 

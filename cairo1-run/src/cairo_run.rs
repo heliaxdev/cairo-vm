@@ -46,7 +46,16 @@ use cairo_vm::{
 use itertools::chain;
 use std::collections::HashMap;
 
-use crate::{Error, FuncArg};
+use crate::error::Error;
+
+#[derive(Debug, Clone)]
+pub enum FuncArg {
+    Array(Vec<Felt252>),
+    Single(Felt252),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FuncArgs(pub Vec<FuncArg>);
 
 #[derive(Debug)]
 pub struct Cairo1RunConfig<'a> {

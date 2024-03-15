@@ -1,19 +1,13 @@
 use bincode::enc::write::Writer;
+use cairo1_run::{
+    cairo_run::{cairo_run_program, Cairo1RunConfig, FuncArg, FuncArgs},
+    error::Error,
+};
 use cairo_lang_compiler::{compile_cairo_project_at_path, CompilerConfig};
-use cairo_lang_sierra::{ids::ConcreteTypeId, program_registry::ProgramRegistryError};
-use cairo_lang_sierra_to_casm::{compiler::CompilationError, metadata::MetadataError};
-use cairo_run::Cairo1RunConfig;
 use cairo_vm::{
     air_public_input::PublicInputError,
-    cairo_run::EncodeTraceError,
-    types::{errors::program_errors::ProgramError, relocatable::MaybeRelocatable},
-    vm::{
-        errors::{
-            memory_errors::MemoryError, runner_errors::RunnerError, trace_errors::TraceError,
-            vm_errors::VirtualMachineError,
-        },
-        vm_core::VirtualMachine,
-    },
+    types::relocatable::MaybeRelocatable,
+    vm::{errors::trace_errors::TraceError, vm_core::VirtualMachine},
     Felt252,
 };
 use clap::{Parser, ValueHint};
@@ -24,9 +18,6 @@ use std::{
     path::PathBuf,
     slice::Iter,
 };
-use thiserror::Error;
-
-pub mod cairo_run;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -69,15 +60,6 @@ struct Args {
     )]
     append_return_values: bool,
 }
-
-#[derive(Debug, Clone)]
-pub enum FuncArg {
-    Array(Vec<Felt252>),
-    Single(Felt252),
-}
-
-#[derive(Debug, Clone, Default)]
-struct FuncArgs(Vec<FuncArg>);
 
 fn process_args(value: &str) -> Result<FuncArgs, String> {
     if value.is_empty() {
@@ -127,55 +109,6 @@ fn validate_layout(value: &str) -> Result<String, String> {
         | "dynamic" => Ok(value.to_string()),
         _ => Err(format!("{value} is not a valid layout")),
     }
-}
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("Invalid arguments")]
-    Cli(#[from] clap::Error),
-    #[error("Failed to interact with the file system")]
-    IO(#[from] std::io::Error),
-    #[error(transparent)]
-    EncodeTrace(#[from] EncodeTraceError),
-    #[error(transparent)]
-    VirtualMachine(#[from] VirtualMachineError),
-    #[error(transparent)]
-    Trace(#[from] TraceError),
-    #[error(transparent)]
-    PublicInput(#[from] PublicInputError),
-    #[error(transparent)]
-    Runner(#[from] RunnerError),
-    #[error(transparent)]
-    ProgramRegistry(#[from] Box<ProgramRegistryError>),
-    #[error(transparent)]
-    Compilation(#[from] Box<CompilationError>),
-    #[error("Failed to compile to sierra:\n {0}")]
-    SierraCompilation(String),
-    #[error(transparent)]
-    Metadata(#[from] MetadataError),
-    #[error(transparent)]
-    Program(#[from] ProgramError),
-    #[error(transparent)]
-    Memory(#[from] MemoryError),
-    #[error("Program panicked with {0:?}")]
-    RunPanic(Vec<Felt252>),
-    #[error("Function signature has no return types")]
-    NoRetTypesInSignature,
-    #[error("No size for concrete type id: {0}")]
-    NoTypeSizeForId(ConcreteTypeId),
-    #[error("Concrete type id has no debug name: {0}")]
-    TypeIdNoDebugName(ConcreteTypeId),
-    #[error("No info in sierra program registry for concrete type id: {0}")]
-    NoInfoForType(ConcreteTypeId),
-    #[error("Failed to extract return values from VM")]
-    FailedToExtractReturnValues,
-    #[error("Function expects arguments of size {expected} and received {actual} instead.")]
-    ArgumentsSizeMismatch { expected: i16, actual: i16 },
-    #[error("Function param {param_index} only partially contains argument {arg_index}.")]
-    ArgumentUnaligned {
-        param_index: usize,
-        arg_index: usize,
-    },
 }
 
 pub struct FileWriter {
@@ -232,8 +165,7 @@ fn run(args: impl Iterator<Item = String>) -> Result<Option<String>, Error> {
     let sierra_program = compile_cairo_project_at_path(&args.filename, compiler_config)
         .map_err(|err| Error::SierraCompilation(err.to_string()))?;
 
-    let (runner, vm, return_values) =
-        cairo_run::cairo_run_program(&sierra_program, cairo_run_config)?;
+    let (runner, vm, return_values) = cairo_run_program(&sierra_program, cairo_run_config)?;
 
     let output_string = if args.print_output {
         Some(serialize_output(&vm, &return_values))
